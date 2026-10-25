@@ -1,0 +1,12 @@
+{
+  "productName": "SI OpenCode Updater",
+  "version": "0.1.0",
+  "identifier": "com.satreci.si-opencode-updater",
+  "build": { "frontendDist": "ui" },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [],
+    "security": { "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'" }
+  },
+  "bundle": { "active": false }
+}

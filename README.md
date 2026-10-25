@@ -1,0 +1,27 @@
+# SI OpenCode — offline Windows installer
+
+New implementation; does not reuse `si_codex_installer`. The Inno Setup source is `installer/SI_OpenCode.iss`; the Rust `si_opencode_updater.exe` handles validation, signed releases, Windows Credential Manager, NAS authentication, Desktop updates and managed extensions. Inno Setup supplies the required API Key / wiki / work / optional code PAT inputs and the mandatory unselected Yes/No FPGA choice. Existing conversations and unowned/user-modified files are not removed.
+
+## Build and publish
+
+The **only real build** is `build.ps1 -PrivateKey <restricted-private.pk8> -PublicKey <public.bin> -Version <increasing-integer>` on a Windows x64 machine with Rust/MSVC and Inno Setup 6.5.2+. The source's `vendor/` and `.cargo/config.toml` allow Cargo to build offline. Keys can be generated with `cargo run --offline --bin release -- keygen <private.pk8> <public.bin>`; the private key must remain outside `payload/`/`out/`, with a restricted ACL and a publisher-controlled backup. Never distribute it.
+
+Supply `payload/` with:
+
+- `opencode_desktop_win64.exe` (official signed Windows x64 Desktop installer), `wsl.msi` (signed WSL offline installer), and `kb-runtime.tar.gz` (AMD KB snapshot/images plus offline Docker DEBs; **external sidecars**).
+- `managed/` containing reviewed `plugins/`, `skills/`, `mcp/`, and `bin/` with their licenses and every offline dependency. The build packages direct-copy entries as the external `managed-runtime.tar.gz` sidecar. Entries explicitly marked `installMethod: "npm"` in `config/managed-delivery.json` are omitted from that archive and installed from the configured Nexus registry during setup. OpenCode V2 itself **does not support LSP execution/diagnostics**.
+- `updater.json`, copied from `config/updater.example.json`. The supplied `/volume1/SI조직_우주기술센터/냐공유_우주기술개발자료/Software Tools/si_opencode` path is recorded there, but its usability via the DSM FileStation API must be checked on the corporate network. The installer probes `https://ai.satreci.com:8443/v1/chat/completions` first and then `/chat/completions` only on 404, using the entered API Key; no separate URL UI field is required.
+
+The build produces `out/si_opencode_installer.exe`, `out/si_opencode_updater.exe`, `out/opencode_desktop_win64.exe`, and `out/managed-runtime.tar.gz`; FPGA users also require `out/wsl.msi`, `out/kb-runtime.tar.gz`, and `out/ubuntu-resolute-amd64.wsl`. Keep every applicable sidecar beside the installer. The build hashes each sidecar and compiles those hashes into Inno Setup's **external** file validation. It refuses missing assets or an executable at/above 4 GiB. The test-only Inno build uses `/DTEST_BUILD=1`, writes `target/inno-syntax-check/NOT_FOR_DISTRIBUTION.exe`, and must never be shipped.
+
+To publish later updates, run `scripts/stage-nas-release.ps1` with the same publisher keypair, new version, destination directory and optional signed publisher MCP settings file. Upload the staged directory contents to the configured FileStation directory. The uploader/DSM FileStation API and LLM/MCP URLs must be verified on the corporate network; never embed SynoToken-bearing `fbdownload` links. If the NAS path moves, edit the per-user `%LOCALAPPDATA%\SI OpenCode\updater.json` on existing PCs or keep the old path available during migration. Updater authentication requests a NAS account only on first check or an explicit invalid-credentials response; service/TLS errors never trigger a password reprompt.
+
+## FPGA knowledge base status
+
+The KB path is **verified on this machine**: Docker Engine from the offline DEB set inside WSL2, the four AMD images loaded, 725,911 AMD documentation objects imported, the MCP server answering on `http://localhost:8080/mcp/doc-search`, and `vivado_doc_search` returning real documentation (UG904 and UG892 chunks with `docs.amd.com` URLs). The Rust `--verify-kb` check passes against the live server, and the search still works after `wsl --shutdown` and a fresh start. `scripts/build-kb-runtime.ps1` packages only the necessary files from `Downloads\ross_kb`; `scripts/setup-kb.ps1` configures Docker and the AMD stack in the user's existing Ubuntu WSL, enables automatic start, and verifies a real search. Constraints, deviations from the upstream guide and measured memory behaviour are recorded in `docs/KB-BUILD.md`.
+
+## Required release validation
+
+Run `cargo test --offline --locked` and `cargo clippy --offline --locked --all-targets -- -D warnings`; compile the Inno script, then test **both** FPGA and non-FPGA installs on clean, disconnected Windows x64 accounts with reachable internal services. Test required MCP `tools/list` and LLM `GPT`, optional `code` skip, login-time KB startup and a real `vivado_doc_search`, reboot with explicit consent, modified-file preservation, signed manifest rejection, Desktop update with the app closed, daily 13:00 task, and uninstall preserving sessions/secrets/WSL. See `docs/KB-BUILD.md` for AMD package, embedding image and Docker Engine/Compose/CLI requirements.
+
+**Do not distribute the present workspace as a finished installer.** The AMD entitlement package and its validated WSL image are not available here; the corporate FileStation API behavior and model chat route cannot be checked from this machine. End-to-end WSL and service verification is therefore impossible here. Inno Setup mock-fixture compilation and offline Rust tests prove syntax and local safety properties, not production runtime behavior.
