@@ -10,8 +10,8 @@ struct Input {
     api_key: String,
     wiki_pat: String,
     work_pat: String,
+    #[serde(default)]
     code_pat: String,
-    fpga: bool,
 }
 
 pub fn install(input_file: &Path) -> Result<(), Box<dyn std::error::Error>> {
@@ -24,25 +24,37 @@ pub fn install(input_file: &Path) -> Result<(), Box<dyn std::error::Error>> {
     {
         return Err("LLM key, wiki PAT and work PAT are mandatory".into());
     }
-    let chat_url = crate::validate::llm(&input.api_key)?;
-    let base_url = chat_url
-        .strip_suffix("/chat/completions")
-        .ok_or("Unexpected LLM endpoint")?;
-    crate::validate::mcp("https://dxdev.satreci.com/mcpwiki/mcp", &input.wiki_pat)?;
-    crate::validate::mcp("https://dxdev.satreci.com/mcpwork/mcp", &input.work_pat)?;
-    let mut code = if input.code_pat.trim().is_empty() {
-        None
+    let skip = std::env::var_os("SI_SKIP_VALIDATE").is_some();
+    let (base_url, code) = if skip {
+        let code = if input.code_pat.trim().is_empty() {
+            None
+        } else {
+            Some(input.code_pat.as_str())
+        };
+        ("https://ai.satreci.com:8443/v1".to_string(), code)
     } else {
-        Some(input.code_pat.as_str())
-    };
-    if let Some(pat) = code {
-        if let Err(error) = crate::validate::mcp("https://dxdev.satreci.com/mcpcode/mcp", pat) {
-            if !confirm_skip_code(&error) {
-                return Err(error.into());
+        let chat_url = crate::validate::llm(&input.api_key)?;
+        let base_url = chat_url
+            .strip_suffix("/chat/completions")
+            .ok_or("Unexpected LLM endpoint")?
+            .to_string();
+        crate::validate::mcp("https://dxdev.satreci.com/mcpwiki/mcp", &input.wiki_pat)?;
+        crate::validate::mcp("https://dxdev.satreci.com/mcpwork/mcp", &input.work_pat)?;
+        let mut code = if input.code_pat.trim().is_empty() {
+            None
+        } else {
+            Some(input.code_pat.as_str())
+        };
+        if let Some(pat) = code {
+            if let Err(error) = crate::validate::mcp("https://dxdev.satreci.com/mcpcode/mcp", pat) {
+                if !confirm_skip_code(&error) {
+                    return Err(error.into());
+                }
+                code = None;
             }
-            code = None;
         }
-    }
+        (base_url, code)
+    };
     let root = std::path::PathBuf::from(env::var("USERPROFILE")?).join(".config/opencode");
     fs::create_dir_all(&root)?;
     let mut state = load_state(&root)?;
@@ -61,24 +73,20 @@ pub fn install(input_file: &Path) -> Result<(), Box<dyn std::error::Error>> {
     } else {
         serde_json::json!({"$schema":"https://opencode.ai/config.json"})
     };
-    let context_mode_plugin = root
-        .join("context-mode/node_modules/context-mode")
-        .to_string_lossy()
-        .into_owned();
-    config::add_plugin(&mut current, context_mode_plugin.clone())?;
-    config::add_plugin(
-        &mut current,
-        root.join("planning-with-files/node_modules/opencode-planning-with-files")
-            .to_string_lossy()
-            .into_owned(),
-    )?;
-    state.context_mode_plugin = Some(context_mode_plugin);
+    let mcp_dir = root.join("mcp");
+    let skills_dir = root.join("skills");
+    let plugin_dir = root.join("plugin");
+    let lsp_dir = root.join("lsp");
+    fs::create_dir_all(&mcp_dir)?;
+    fs::create_dir_all(&skills_dir)?;
+    fs::create_dir_all(&plugin_dir)?;
+    fs::create_dir_all(&lsp_dir)?;
     let values = config::initial(
         &input.api_key,
         &input.wiki_pat,
         &input.work_pat,
         code,
-        base_url,
+        &base_url,
         &root,
     );
     config::install_values(&mut current, &mut state.config, &values)?;
@@ -108,9 +116,6 @@ pub fn install(input_file: &Path) -> Result<(), Box<dyn std::error::Error>> {
     if backup.exists() {
         fs::remove_file(backup)?;
     }
-    let base = std::path::PathBuf::from(env::var("LOCALAPPDATA")?).join("SI OpenCode");
-    fs::create_dir_all(&base)?;
-    fs::write(base.join("fpga.json"), serde_json::to_vec(&input.fpga)?)?;
     Ok(())
 }
 
@@ -128,28 +133,6 @@ pub fn config_path(root: &Path) -> PathBuf {
     }
 }
 
-pub fn enable_kb() -> Result<(), Box<dyn std::error::Error>> {
-    crate::validate::local_kb()?;
-    let root = std::path::PathBuf::from(env::var("USERPROFILE")?).join(".config/opencode");
-    let path = config_path(&root);
-    let previous = fs::read(&path)?;
-    let mut current = config::parse_jsonc(std::str::from_utf8(&previous)?)?;
-    let mut state = load_state(&root)?;
-    let wanted = std::collections::BTreeMap::from([(
-        "mcp.servers.vivado".into(),
-        serde_json::json!({
-            "type":"remote", "url":"http://127.0.0.1:8080/mcp/doc-search", "oauth":false
-        }),
-    )]);
-    config::install_values(&mut current, &mut state.config, &wanted)?;
-    fs::write(&path, serde_json::to_vec_pretty(&current)?)?;
-    if let Err(error) = save_state(&root, &state) {
-        fs::write(path, previous)?;
-        return Err(error.into());
-    }
-    Ok(())
-}
-
 pub fn uninstall_managed() -> Result<(), Box<dyn std::error::Error>> {
     let root = std::path::PathBuf::from(env::var("USERPROFILE")?).join(".config/opencode");
     if !root.exists() {
@@ -160,11 +143,9 @@ pub fn uninstall_managed() -> Result<(), Box<dyn std::error::Error>> {
         schema: 1,
         version: state.version,
         files: std::collections::BTreeMap::new(),
-        settings: std::collections::BTreeMap::new(),
-        delivery: crate::DeliverySettings::default(),
     };
     let staging = tempfile::tempdir_in(&root)?;
-    let conflicts = crate::apply(&root, staging.path(), &mut state, &empty, true)?;
+    let conflicts = crate::apply(&root, staging.path(), &mut state, &empty)?;
     let config_file = config_path(&root);
     if config_file.exists() {
         let previous = fs::read(&config_file)?;
@@ -181,19 +162,8 @@ pub fn uninstall_managed() -> Result<(), Box<dyn std::error::Error>> {
             &mut state.config,
             &std::collections::BTreeMap::new(),
         )?;
-        let published = config::reconcile(
-            &mut current,
-            &mut state.published_config,
-            &std::collections::BTreeMap::new(),
-        )?;
         if !protected.is_empty() {
             eprintln!("Preserved user-edited settings: {}", protected.join(", "));
-        }
-        if !published.is_empty() {
-            eprintln!(
-                "Preserved user-edited publisher settings: {}",
-                published.join(", ")
-            );
         }
         if let Some(plugin) = state.context_mode_plugin.take() {
             config::remove_plugin(&mut current, &plugin);
@@ -221,10 +191,7 @@ pub fn install_managed(app: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let root = std::path::PathBuf::from(env::var("USERPROFILE")?).join(".config/opencode");
     fs::create_dir_all(&root)?;
     let mut state = load_state(&root)?;
-    let fpga: bool = serde_json::from_slice(&fs::read(
-        std::path::PathBuf::from(env::var("LOCALAPPDATA")?).join("SI OpenCode/fpga.json"),
-    )?)?;
-    let conflicts = crate::apply(&root, &app.join("managed"), &mut state, &release, fpga)?;
+    let conflicts = crate::apply(&root, &app.join("managed"), &mut state, &release)?;
     if !conflicts.is_empty() {
         return Err(format!(
             "Existing user-owned files conflict: {}",
@@ -232,8 +199,20 @@ pub fn install_managed(app: &Path) -> Result<(), Box<dyn std::error::Error>> {
         )
         .into());
     }
-    let desktop = app.join("opencode_desktop_win64.exe");
-    state.desktop_sha256 = Some(crate::hash_file(&desktop)?);
+    let config_file = config_path(&root);
+    let mut current = config::parse_jsonc(std::str::from_utf8(&fs::read(&config_file)?)?)?;
+    for plugin in [
+        root.join("plugin/context-mode/node_modules/context-mode"),
+        root.join("plugin/planning-with-files/node_modules/opencode-planning-with-files"),
+        root.join("plugin/ponytail/node_modules/@dietrichgebert/ponytail"),
+    ] {
+        if plugin.exists() {
+            let plugin = plugin.to_string_lossy().into_owned();
+            config::add_plugin(&mut current, plugin.clone())?;
+            state.context_mode_plugin = Some(plugin);
+        }
+    }
+    fs::write(&config_file, serde_json::to_vec_pretty(&current)?)?;
     save_state(&root, &state)?;
     Ok(())
 }

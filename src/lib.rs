@@ -9,11 +9,7 @@ use std::{
 };
 
 pub mod config;
-#[cfg(windows)]
-pub mod credentials;
-pub mod nas;
 pub mod provision;
-pub mod release_notes;
 pub mod validate;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -21,53 +17,12 @@ pub struct Release {
     pub schema: u32,
     pub version: u64,
     pub files: BTreeMap<String, Artifact>,
-    #[serde(default)]
-    pub settings: BTreeMap<String, serde_json::Value>,
-    #[serde(default, skip_serializing_if = "DeliverySettings::is_empty")]
-    pub delivery: DeliverySettings,
-}
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
-pub struct DeliverySettings {
-    #[serde(rename = "npmRegistry", skip_serializing_if = "Option::is_none")]
-    pub npm_registry: Option<String>,
-}
-
-impl DeliverySettings {
-    fn is_empty(settings: &Self) -> bool {
-        settings.npm_registry.is_none()
-    }
-}
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ArtifactDelivery {
-    #[serde(rename = "installMethod", skip_serializing_if = "Option::is_none")]
-    pub install_method: Option<String>,
-    #[serde(rename = "npmPackage", skip_serializing_if = "Option::is_none")]
-    pub npm_package: Option<String>,
-    #[serde(rename = "npmVersion", skip_serializing_if = "Option::is_none")]
-    pub npm_version: Option<String>,
-    #[serde(rename = "npmRegistry", skip_serializing_if = "Option::is_none")]
-    pub npm_registry: Option<String>,
-    #[serde(rename = "npmPath", skip_serializing_if = "Option::is_none")]
-    pub npm_path: Option<String>,
-    #[serde(rename = "fallbackToDirectCopy", skip_serializing_if = "Option::is_none")]
-    pub fallback_to_direct_copy: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub optional: Option<bool>,
-    #[serde(rename = "requiresAdmin", skip_serializing_if = "Option::is_none")]
-    pub requires_admin: Option<bool>,
-    #[serde(rename = "directPath", skip_serializing_if = "Option::is_none")]
-    pub direct_path: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Artifact {
     pub sha256: String,
     pub bytes: u64,
-    pub fpga: bool,
-    #[serde(flatten)]
-    pub delivery: ArtifactDelivery,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -78,34 +33,7 @@ pub struct Installed {
     #[serde(default)]
     pub config: BTreeMap<String, String>,
     #[serde(default)]
-    pub published_config: BTreeMap<String, String>,
-    #[serde(default)]
-    pub desktop_sha256: Option<String>,
-    #[serde(default)]
     pub context_mode_plugin: Option<String>,
-    #[serde(default)]
-    pub shown_release_notes: Option<u64>,
-}
-
-/// This is installed as a user-editable local file, not embedded in the updater executable.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct NasConfig {
-    pub host: String,
-    pub manifest_path: String,
-}
-
-impl NasConfig {
-    pub fn validate(&self) -> Result<(), String> {
-        if self.host != "https://file.satreci.com" {
-            return Err("NAS host must be https://file.satreci.com".into());
-        }
-        if !self.manifest_path.starts_with('/')
-            || self.manifest_path.contains(['?', '#', '\\', ':'])
-        {
-            return Err("Provide a NAS FileStation path, not a download link".into());
-        }
-        safe_name(&self.manifest_path[1..])
-    }
 }
 
 pub fn verify_manifest(
@@ -131,19 +59,6 @@ pub fn verify_manifest(
         }
         if artifact.sha256.len() != 64 || !artifact.sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err(format!("Invalid digest for {name}"));
-        }
-    }
-    for key in release.settings.keys() {
-        if !key.starts_with("mcp.servers.")
-            || matches!(
-                key.as_str(),
-                "mcp.servers.wiki" | "mcp.servers.work" | "mcp.servers.code" | "mcp.servers.vivado"
-            )
-            || key.split('.').count() != 3
-        {
-            return Err(format!(
-                "Manifest may not replace user credentials or unrelated settings: {key}"
-            ));
         }
     }
     Ok(release)
@@ -301,12 +216,12 @@ pub fn recover(root: &Path) -> io::Result<()> {
     Ok(())
 }
 
-pub fn plan(root: &Path, old: &Installed, new: &Release, fpga: bool) -> io::Result<Vec<Action>> {
+pub fn plan(root: &Path, old: &Installed, new: &Release) -> io::Result<Vec<Action>> {
     let mut actions = Vec::new();
     for (name, old_hash) in &old.files {
         safe_name(name).map_err(io::Error::other)?;
         check_no_links(root, name)?;
-        let wanted = new.files.get(name).filter(|entry| fpga || !entry.fpga);
+        let wanted = new.files.get(name);
         if wanted.is_none() {
             let path = root.join(name);
             if path.is_file() && hash_file(&path)? == *old_hash {
@@ -317,9 +232,6 @@ pub fn plan(root: &Path, old: &Installed, new: &Release, fpga: bool) -> io::Resu
         }
     }
     for (name, artifact) in &new.files {
-        if artifact.fpga && !fpga {
-            continue;
-        }
         safe_name(name).map_err(io::Error::other)?;
         check_no_links(root, name)?;
         let path = root.join(name);
@@ -385,13 +297,12 @@ pub fn apply(
     staging: &Path,
     old: &mut Installed,
     new: &Release,
-    fpga: bool,
 ) -> io::Result<Vec<String>> {
     recover(root)?;
     if new.version < old.version {
         return Err(io::Error::other("Refusing release downgrade"));
     }
-    let actions = plan(root, old, new, fpga)?;
+    let actions = plan(root, old, new)?;
     let conflicts: Vec<_> = actions
         .iter()
         .filter_map(|action| match action {
@@ -487,238 +398,19 @@ pub fn apply(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ring::{
-        rand::SystemRandom,
-        signature::{Ed25519KeyPair, KeyPair},
-    };
 
     #[test]
-    fn signed_manifest_rejects_tampering_and_traversal() {
-        let rng = SystemRandom::new();
-        let key = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
-        let key = Ed25519KeyPair::from_pkcs8(key.as_ref()).unwrap();
-        let release = Release {
-            schema: 1,
-            version: 2,
-            files: BTreeMap::new(),
-            settings: BTreeMap::new(),
-            delivery: DeliverySettings::default(),
-        };
-        let bytes = serde_json::to_vec(&release).unwrap();
-        let sig = STANDARD.encode(key.sign(&bytes).as_ref());
-        assert!(verify_manifest(&bytes, &sig, key.public_key().as_ref()).is_ok());
-        assert!(verify_manifest(b"{}", &sig, key.public_key().as_ref()).is_err());
-        assert!(safe_name("skills/../secrets").is_err());
-        assert!(safe_name("C:\\Users\\secret").is_err());
+    fn rejects_unsafe_paths() {
+        assert!(safe_name("skills/../secret").is_err());
         assert!(safe_name("CON.txt").is_err());
     }
 
     #[test]
-    fn artifact_delivery_metadata_is_part_of_the_signed_manifest_json() {
-        let artifact = Artifact {
-            sha256: sha256(b"npm"),
-            bytes: 3,
-            fpga: false,
-            delivery: ArtifactDelivery {
-                install_method: Some("npm".into()),
-                npm_package: Some("@satreci/example".into()),
-                npm_version: Some("1.0.0".into()),
-                npm_registry: Some("https://nexus.example/repository/npm-group/".into()),
-                npm_path: Some("dist/example.js".into()),
-                fallback_to_direct_copy: Some(true),
-                optional: Some(false),
-                requires_admin: None,
-                direct_path: None,
-            },
-        };
-        let bytes = serde_json::to_vec(&artifact).unwrap();
-        assert!(String::from_utf8(bytes.clone()).unwrap().contains("\"installMethod\":\"npm\""));
-        assert_eq!(serde_json::from_slice::<Artifact>(&bytes).unwrap(), artifact);
-    }
-
-    #[test]
-    fn nas_path_is_configurable_but_never_an_arbitrary_credential_destination() {
-        let mut config = NasConfig {
-            host: "https://file.satreci.com".into(),
-            manifest_path: "/si_우주과제/si_opencode/manifest.json".into(),
-        };
-        assert!(config.validate().is_ok());
-        config.host = "https://attacker.example".into();
-        assert!(config.validate().is_err());
-        config.host = "https://file.satreci.com".into();
-        config.manifest_path = "/si_우주과제/../secret".into();
-        assert!(config.validate().is_err());
-        config.manifest_path = "/fbdownload/item?SynoToken=secret".into();
-        assert!(config.validate().is_err());
-    }
-
-    #[test]
-    fn removal_respects_user_changes_and_new_files() {
-        let tmp = tempfile::tempdir().unwrap();
-        fs::write(tmp.path().join("owned"), b"edited").unwrap();
-        fs::write(tmp.path().join("personal"), b"personal").unwrap();
-        let old = Installed {
-            version: 1,
-            files: BTreeMap::from([("owned".into(), sha256(b"original"))]),
-            config: BTreeMap::new(),
-            published_config: BTreeMap::new(),
-            desktop_sha256: None,
-            context_mode_plugin: None,
-            shown_release_notes: None,
-        };
-        let new = Release {
-            schema: 1,
-            version: 2,
-            files: BTreeMap::new(),
-            settings: BTreeMap::new(),
-            delivery: DeliverySettings::default(),
-        };
-        assert_eq!(
-            plan(tmp.path(), &old, &new, false).unwrap(),
-            vec![Action::Conflict("owned".into())]
-        );
-        assert_eq!(fs::read(tmp.path().join("personal")).unwrap(), b"personal");
-    }
-
-    #[test]
-    fn verifies_all_payloads_before_changing_anything() {
+    fn keeps_user_modified_files() {
         let root = tempfile::tempdir().unwrap();
-        let stage = tempfile::tempdir().unwrap();
-        fs::write(root.path().join("existing"), b"old").unwrap();
-        let mut old = Installed {
-            version: 1,
-            files: BTreeMap::from([("existing".into(), sha256(b"old"))]),
-            config: BTreeMap::new(),
-            published_config: BTreeMap::new(),
-            desktop_sha256: None,
-            context_mode_plugin: None,
-            shown_release_notes: None,
-        };
-        let new = Release {
-            schema: 1,
-            version: 2,
-            files: BTreeMap::from([(
-                "new".into(),
-                Artifact {
-                    sha256: sha256(b"good"),
-                    bytes: 4,
-                    fpga: false,
-                    delivery: ArtifactDelivery::default(),
-                },
-            )]),
-            settings: BTreeMap::new(),
-            delivery: DeliverySettings::default(),
-        };
-        fs::write(stage.path().join("new"), b"bad!").unwrap();
-        assert!(apply(root.path(), stage.path(), &mut old, &new, false).is_err());
-        assert_eq!(fs::read(root.path().join("existing")).unwrap(), b"old");
-        assert_eq!(old.version, 1);
-    }
-
-    #[test]
-    fn update_only_touches_owned_files_and_respects_fpga() {
-        let root = tempfile::tempdir().unwrap();
-        let stage = tempfile::tempdir().unwrap();
-        fs::write(root.path().join("old"), b"v1").unwrap();
-        fs::write(root.path().join("personal"), b"mine").unwrap();
-        fs::write(stage.path().join("new"), b"v2").unwrap();
-        let mut old = Installed {
-            version: 1,
-            files: BTreeMap::from([("old".into(), sha256(b"v1"))]),
-            config: BTreeMap::new(),
-            published_config: BTreeMap::new(),
-            desktop_sha256: None,
-            context_mode_plugin: None,
-            shown_release_notes: None,
-        };
-        let new = Release {
-            schema: 1,
-            version: 2,
-            files: BTreeMap::from([
-                (
-                    "new".into(),
-                    Artifact {
-                        sha256: sha256(b"v2"),
-                        bytes: 2,
-                        fpga: false,
-                        delivery: ArtifactDelivery::default(),
-                    },
-                ),
-                (
-                    "fpga/vivado".into(),
-                    Artifact {
-                        sha256: sha256(b"kb"),
-                        bytes: 2,
-                        fpga: true,
-                        delivery: ArtifactDelivery::default(),
-                    },
-                ),
-            ]),
-            settings: BTreeMap::new(),
-            delivery: DeliverySettings::default(),
-        };
-        assert!(apply(root.path(), stage.path(), &mut old, &new, false)
-            .unwrap()
-            .is_empty());
-        assert!(!root.path().join("old").exists());
-        assert_eq!(fs::read(root.path().join("new")).unwrap(), b"v2");
-        assert_eq!(fs::read(root.path().join("personal")).unwrap(), b"mine");
-        assert!(!root.path().join("fpga").exists());
-        assert_eq!(old.version, 2);
-        assert!(apply(
-            root.path(),
-            stage.path(),
-            &mut old,
-            &Release { version: 1, ..new },
-            false
-        )
-        .is_err());
-    }
-
-    #[test]
-    fn restart_recovers_interrupted_file_replacement() {
-        let root = tempfile::tempdir().unwrap();
-        let old = Installed {
-            version: 1,
-            files: BTreeMap::from([("plugin".into(), sha256(b"old"))]),
-            config: BTreeMap::new(),
-            published_config: BTreeMap::new(),
-            desktop_sha256: None,
-            context_mode_plugin: None,
-            shown_release_notes: None,
-        };
-        let new = Release {
-            schema: 1,
-            version: 2,
-            files: BTreeMap::from([(
-                "plugin".into(),
-                Artifact {
-                    sha256: sha256(b"new"),
-                    bytes: 3,
-                    fpga: false,
-                    delivery: ArtifactDelivery::default(),
-                },
-            )]),
-            settings: BTreeMap::new(),
-            delivery: DeliverySettings::default(),
-        };
-        let backup = root.path().join(".si-update-backup");
-        fs::create_dir(&backup).unwrap();
-        fs::write(backup.join("plugin"), b"old").unwrap();
-        fs::write(root.path().join("plugin"), b"new").unwrap();
-        fs::write(
-            root.path().join(".si-update-journal.json"),
-            serde_json::to_vec(&Journal {
-                old: old.clone(),
-                actions: vec![Action::Install("plugin".into())],
-                release: new,
-            })
-            .unwrap(),
-        )
-        .unwrap();
-        let restored = load_state(root.path()).unwrap();
-        assert_eq!(restored.version, 1);
-        assert_eq!(fs::read(root.path().join("plugin")).unwrap(), b"old");
-        assert!(!backup.exists());
+        fs::write(root.path().join("skill"), b"user edit").unwrap();
+        let old = Installed { version: 1, files: BTreeMap::from([("skill".into(), sha256(b"original"))]), config: BTreeMap::new(), context_mode_plugin: None };
+        let new = Release { schema: 1, version: 2, files: BTreeMap::new() };
+        assert_eq!(plan(root.path(), &old, &new).unwrap(), vec![Action::Conflict("skill".into())]);
     }
 }

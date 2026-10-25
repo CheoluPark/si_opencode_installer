@@ -1,4 +1,14 @@
 {
   "npmRegistry": "https://NEXUS_NPM_REGISTRY_PLACEHOLDER/repository/npm-group/",
-  "files": {}
+  "packages": [
+    { "target": "plugin/ponytail", "package": "@dietrichgebert/ponytail", "version": "5.3.2" },
+    { "target": "plugin/context-mode", "package": "context-mode", "version": "1.0.169" },
+    { "target": "plugin/planning-with-files", "package": "opencode-planning-with-files", "version": "1.2.0" },
+    { "target": "skills/ui-ux-pro-max", "package": "ui-ux-pro-max-cli", "version": "2.15.0" },
+    { "target": "mcp/rea", "package": "rea-agents", "version": "6.7.0" },
+    { "target": "mcp/drawio", "package": "@next-ai-drawio/mcp-server", "version": "0.4.6" },
+    { "target": "lsp/python", "package": "pyright", "version": "1.1.414" },
+    { "target": "lsp/ts", "package": "typescript", "version": "7.0.2" },
+    { "target": "lsp/ts", "package": "typescript-language-server", "version": "6.0.2" }
+  ]
 }

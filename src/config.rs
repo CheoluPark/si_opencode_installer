@@ -202,7 +202,7 @@ pub fn initial(
     if let Some(pat) = code {
         result.insert("mcp.servers.code".into(), json!({"type":"remote","url":"https://dxdev.satreci.com/mcpcode/mcp","oauth":false,"headers":{"Authorization":format!("Bearer {pat}")}}));
     }
-    let node = root.join("bin/node.exe").to_string_lossy().into_owned();
+    let node = root.join("lsp/node/node.exe").to_string_lossy().into_owned();
     let rea = root
         .join("mcp/rea/node_modules/rea-agents/scripts/rea.mjs")
         .to_string_lossy()
