@@ -31,7 +31,6 @@ Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
 [Files]
 Source: "{#PayloadRoot}\si_opencode_updater.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PayloadRoot}\si_opencode_updater.exe"; Flags: dontcopy
-Source: "{src}\opencode_desktop_win64.exe"; DestDir: "{app}"; Flags: external ignoreversion
 Source: "..\scripts\setup-runtime.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\scripts\verify-desktop.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\config\extensions.example.json"; DestDir: "{localappdata}\SI OpenCode"; DestName: "extensions.json"; Flags: ignoreversion onlyifdoesntexist
@@ -111,13 +110,14 @@ begin
     ',"code_pat":' + JsonString(SecretsPage.Values[3]) + '}';
   if not SaveStringsToUTF8FileWithoutBOM(InputFile, Data, False) then
     RaiseException('설치 입력을 안전하게 준비할 수 없습니다.');
+  if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+      '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\setup-runtime.ps1') +
+      '" -AppDir "' + ExpandConstant('{app}') + '" -ReleaseDir "' +
+      ExpandConstant('{tmp}\si-opencode-current-release') + '"',
+      ExpandConstant('{app}'), SW_SHOW, ewWaitUntilTerminated, Code) or (Code <> 0) then
+    RaiseException('필수 OpenCode Desktop 설치 또는 검증에 실패했습니다.');
   if not Exec(ExpandConstant('{app}\si_opencode_updater.exe'),
       '--provision "' + InputFile + '"', ExpandConstant('{app}'), SW_SHOW,
       ewWaitUntilTerminated, Code) or (Code <> 0) then
     RaiseException('서비스 연결 검증 또는 OpenCode 구성에 실패했습니다. 설치가 완료되지 않았습니다.');
-  if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
-      '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\setup-runtime.ps1') +
-      '" -AppDir "' + ExpandConstant('{app}') + '"',
-      ExpandConstant('{app}'), SW_SHOW, ewWaitUntilTerminated, Code) or (Code <> 0) then
-    RaiseException('Desktop/CLI 및 관리 확장 설치에 실패했습니다. 재실행하여 복구하세요.');
 end;
