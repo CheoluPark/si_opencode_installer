@@ -80,7 +80,7 @@ begin
   SecretsPage.Add('사내 LLM API Key:', True);
   SecretsPage.Add('Confluence (wiki) PAT:', True);
   SecretsPage.Add('Jira (work) PAT:', True);
-  SecretsPage.Add('Bitbucket (code) PAT (선택):', True);
+  SecretsPage.Add('Bitbucket (code) PAT (선택, Optional):', True);
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
