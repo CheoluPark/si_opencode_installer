@@ -40,15 +40,24 @@ Place an `extensions-manifest.json` next to the extension files on `file.satreci
       "bytes": 1234
     }
   },
-  "mcp": {
-    "example": {
+  "settings": {
+    "mcp.servers.example": {
+      "type": "local",
       "command": [
         "{root}/lsp/node/node.exe",
         "{root}/mcp/example/node_modules/example-mcp/index.js"
-      ]
+      ],
+      "disabled": true
+    },
+    "lsp.example-language": {
+      "command": ["{root}/lsp/example/example-ls.exe", "--stdio"],
+      "extensions": [".example"],
+      "disabled": true
     }
   }
 }
 ```
 
-Run `si_opencode_updater.exe --sync-extensions`. It downloads changed files, removes files absent from the new manifest only when they still match its recorded hash, and updates MCP configuration. Every managed MCP is written with `"disabled": true`; users enable it later in OpenCode.
+`settings` is a map of `opencode.jsonc` paths to the exact JSON values you want. The updater only replaces `{root}` with the deployment PC's `%USERPROFILE%\.config\opencode` path. It does not infer a command, arguments, plugin format, or LSP options.
+
+Run `si_opencode_updater.exe --sync-extensions`. It downloads changed files, removes files absent from the new manifest only when they still match its recorded hash, and applies the declared settings. Put `"disabled": true` in every MCP/LSP setting that must start disabled.

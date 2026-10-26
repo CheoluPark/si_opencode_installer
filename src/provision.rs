@@ -1,6 +1,6 @@
 use crate::{config, credentials, hash_file, nas::Nas, safe_name, Artifact, NasConfig};
 use serde::Deserialize;
-use std::{collections::{BTreeMap, BTreeSet}, env, fs, io, path::{Path, PathBuf}};
+use std::{collections::BTreeMap, env, fs, io, path::{Path, PathBuf}};
 
 #[derive(Deserialize)]
 struct Input {
@@ -38,13 +38,6 @@ pub fn install(input_file: &Path) -> Result<(), Box<dyn std::error::Error>> {
     };
     let values = config::initial(&input.api_key, &input.wiki_pat, &input.work_pat, code, base_url, &root);
     config::install_values(&mut current, &mut BTreeMap::new(), &values)?;
-    for plugin in [
-        root.join("plugin/context-mode/node_modules/context-mode"),
-        root.join("plugin/planning-with-files/node_modules/opencode-planning-with-files"),
-        root.join("plugin/ponytail/node_modules/@dietrichgebert/ponytail"),
-    ] {
-        config::add_plugin(&mut current, plugin.to_string_lossy().into_owned())?;
-    }
     fs::write(&config_file, serde_json::to_vec_pretty(&current)?)?;
     Ok(())
 }
@@ -61,11 +54,8 @@ pub fn config_path(root: &Path) -> PathBuf {
 struct ExtensionManifest {
     files: BTreeMap<String, Artifact>,
     #[serde(default)]
-    mcp: BTreeMap<String, LocalMcp>,
+    settings: BTreeMap<String, serde_json::Value>,
 }
-
-#[derive(Deserialize)]
-struct LocalMcp { command: Vec<String> }
 
 pub fn sync_extensions() -> Result<(), Box<dyn std::error::Error>> {
     let base = PathBuf::from(env::var("LOCALAPPDATA")?).join("SI OpenCode");
@@ -108,19 +98,22 @@ pub fn sync_extensions() -> Result<(), Box<dyn std::error::Error>> {
     fs::write(previous_path, serde_json::to_vec_pretty(&next)?)?;
     let path = config_path(&root);
     let mut current = config::parse_jsonc(std::str::from_utf8(&fs::read(&path)?)?)?;
-    let wanted: BTreeSet<_> = manifest.mcp.keys().cloned().collect();
-    let mcp_state = root.join(".si-extension-mcp.json");
-    let previous_mcp: BTreeSet<String> = fs::read(&mcp_state).ok().and_then(|bytes| serde_json::from_slice(&bytes).ok()).unwrap_or_default();
-    for (name, mcp) in manifest.mcp {
-        if mcp.command.is_empty() { return Err(format!("MCP command is empty: {name}").into()); }
-        let command: Vec<_> = mcp.command.iter().map(|item| item.replace("{root}", &root.to_string_lossy())).collect();
-        config::install_values(&mut current, &mut BTreeMap::new(), &BTreeMap::from([(format!("mcp.servers.{name}"), serde_json::json!({"type":"local","command":command,"disabled":true}))]))?;
-    }
-    for name in previous_mcp.difference(&wanted) {
-        config::remove(&mut current, &format!("mcp.servers.{name}"))?;
-    }
+    let settings_state = root.join(".si-extension-settings.json");
+    let mut previous_settings: BTreeMap<String, String> = fs::read(&settings_state).ok().and_then(|bytes| serde_json::from_slice(&bytes).ok()).unwrap_or_default();
+    let settings = manifest.settings.into_iter().map(|(key, value)| (key, expand_root(value, &root))).collect();
+    let conflicts = config::reconcile(&mut current, &mut previous_settings, &settings)?;
+    if !conflicts.is_empty() { eprintln!("Preserved user-edited extension settings: {}", conflicts.join(", ")); }
     fs::write(path, serde_json::to_vec_pretty(&current)?)?;
-    fs::write(mcp_state, serde_json::to_vec_pretty(&wanted)?)?;
+    fs::write(settings_state, serde_json::to_vec_pretty(&previous_settings)?)?;
     let _ = nas.logout();
     Ok(())
+}
+
+fn expand_root(value: serde_json::Value, root: &Path) -> serde_json::Value {
+    match value {
+        serde_json::Value::String(text) => serde_json::Value::String(text.replace("{root}", &root.to_string_lossy())),
+        serde_json::Value::Array(items) => serde_json::Value::Array(items.into_iter().map(|item| expand_root(item, root)).collect()),
+        serde_json::Value::Object(items) => serde_json::Value::Object(items.into_iter().map(|(key, item)| (key, expand_root(item, root))).collect()),
+        other => other,
+    }
 }

@@ -189,7 +189,7 @@ pub fn initial(
     work: &str,
     code: Option<&str>,
     base_url: &str,
-    root: &std::path::Path,
+    _root: &std::path::Path,
 ) -> BTreeMap<String, Value> {
     let mut result = BTreeMap::new();
     result.insert("model".into(), json!("si/GPT"));
@@ -206,23 +206,6 @@ pub fn initial(
     if let Some(pat) = code {
         result.insert("mcp.servers.code".into(), json!({"type":"remote","url":"https://dxdev.satreci.com/mcpcode/mcp","oauth":false,"headers":{"Authorization":format!("Bearer {pat}")}}));
     }
-    let node = root.join("lsp/node/node.exe").to_string_lossy().into_owned();
-    let rea = root
-        .join("mcp/rea/node_modules/rea-agents/scripts/rea.mjs")
-        .to_string_lossy()
-        .into_owned();
-    let drawio = root
-        .join("mcp/drawio/node_modules/@next-ai-drawio/mcp-server/dist/index.js")
-        .to_string_lossy()
-        .into_owned();
-    result.insert(
-        "mcp.servers.rea".into(),
-        json!({"type":"local","command":[node,rea,"mcp"],"disabled":true}),
-    );
-    result.insert(
-        "mcp.servers.drawio".into(),
-        json!({"type":"local","command":[node,drawio],"disabled":true}),
-    );
     result
 }
 

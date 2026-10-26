@@ -52,7 +52,7 @@ Never commit or distribute `publisher-ed25519.pk8`.
 
 ## 4. Later extension updates
 
-Use `config/extensions.example.json` to set the FileStation manifest path. See `config/BUNDLE-LAYOUT.md` for the manifest format. Running `si_opencode_updater.exe --sync-extensions` downloads only the listed extension files and registers each managed MCP as disabled.
+Use `config/extensions.example.json` to set the FileStation manifest path. See `config/BUNDLE-LAYOUT.md` for the manifest format. The manifest owns the exact `opencode.jsonc` values: the updater replaces only `{root}` with each PC's deployed path and otherwise writes the configuration exactly as supplied.
 
 ## 5. Build
 
