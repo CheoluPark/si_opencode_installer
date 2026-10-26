@@ -42,25 +42,7 @@ Name: "{group}\SI OpenCode"; Filename: "{app}\si_opencode_updater.exe"; Paramete
 var
   SecretsPage: TInputQueryWizardPage;
   ReleaseStage: String;
-
-function InitializeSetup: Boolean;
-var
-  Code: Integer;
-begin
-  Result := False;
-  ExtractTemporaryFile('si_opencode_updater.exe');
-  ReleaseStage := ExpandConstant('{tmp}\si-opencode-current-release');
-  if not Exec(ExpandConstant('{tmp}\si_opencode_updater.exe'),
-      '--fetch-current-release "' + ReleaseStage + '"', ExpandConstant('{tmp}'), SW_SHOW,
-      ewWaitUntilTerminated, Code) or (Code <> 0) then begin
-    MsgBox('서명된 현재 릴리스를 확인하지 못했습니다. 설치를 취소합니다.', mbError, MB_OK);
-    Exit;
-  end;
-  if DirExists(ExpandConstant('{userprofile}\.config\opencode')) then begin
-    if MsgBox('기존 OpenCode 설정을 백업한 뒤 새 설정 번들로 교체합니다. 계속하시겠습니까?', mbConfirmation, MB_YESNO) <> IDYES then Exit;
-  end;
-  Result := True;
-end;
+  RebootRequired: Boolean;
 
 function JsonString(const Text: String): String;
 var
@@ -87,6 +69,8 @@ begin
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  Code: Integer;
 begin
   Result := True;
   if CurPageID = SecretsPage.ID then begin
@@ -94,7 +78,20 @@ begin
        (Trim(SecretsPage.Values[2]) = '') then begin
       MsgBox('LLM API Key, wiki PAT, work PAT을 모두 입력해야 합니다.', mbError, MB_OK);
       Result := False;
+      Exit;
     end;
+    ExtractTemporaryFile('si_opencode_updater.exe');
+    ReleaseStage := ExpandConstant('{tmp}\si-opencode-current-release');
+    if not Exec(ExpandConstant('{tmp}\si_opencode_updater.exe'),
+        '--fetch-current-release "' + ReleaseStage + '"', ExpandConstant('{tmp}'), SW_SHOW,
+        ewWaitUntilTerminated, Code) or (Code <> 0) then begin
+      MsgBox('서명된 현재 릴리스를 확인하지 못했습니다. 설치를 취소합니다.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+    if DirExists(ExpandConstant('{userprofile}\.config\opencode')) and
+       (MsgBox('기존 OpenCode 설정을 백업한 뒤 새 설정 번들로 교체합니다. 계속하시겠습니까?', mbConfirmation, MB_YESNO) <> IDYES) then
+      Result := False;
   end;
 end;
 
@@ -114,6 +111,8 @@ begin
       if WarningSummary <> '' then
         MsgBox('설치는 완료되었지만 선택 도구 일부를 건너뛰거나 설치하지 못했습니다:' + #13#10 + #13#10 + WarningSummary, mbInformation, MB_OK);
     end;
+    if RebootRequired and (MsgBox('설치를 완료하려면 Windows 재부팅이 필요합니다. 지금 재부팅하시겠습니까?', mbConfirmation, MB_YESNO) = IDYES) then
+      Exec(ExpandConstant('{sys}\shutdown.exe'), '/r /t 0', '', SW_HIDE, ewNoWait, Code);
     Exit;
   end;
   if CurStep <> ssPostInstall then Exit;
@@ -135,6 +134,5 @@ begin
       '--provision "' + InputFile + '" "' + ReleaseStage + '" --overwrite-confirmed', ExpandConstant('{app}'), SW_SHOW,
       ewWaitUntilTerminated, Code) or (Code <> 0) then
     RaiseException('서비스 연결 검증 또는 OpenCode 구성에 실패했습니다. 설치가 완료되지 않았습니다.');
-  if FileExists(ExpandConstant('{tmp}\si-opencode-reboot-required')) then
-    Exec(ExpandConstant('{sys}\shutdown.exe'), '/r /t 60 /c "SI OpenCode installation requires a restart."', '', SW_HIDE, ewNoWait, Code);
+  RebootRequired := FileExists(ExpandConstant('{tmp}\si-opencode-reboot-required'));
 end;

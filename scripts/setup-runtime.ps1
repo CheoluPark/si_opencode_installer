@@ -89,6 +89,7 @@ if ($availableTools.Count) {
                 if ([IO.Path]::IsPathRooted($installerName) -or $installerName -match '(^|[\\/])\.\.([\\/]|$)') { throw 'Invalid installer path' }
                 $installer = Join-Path $ReleaseDir $installerName
                 if (([string]$tool.sha256).ToLowerInvariant() -notmatch '^[0-9a-f]{64}$' -or (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant() -ne ([string]$tool.sha256).ToLowerInvariant()) { throw 'Installer hash check failed' }
+                if ((Get-AuthenticodeSignature -LiteralPath $installer).Status -ne 'Valid') { throw 'Installer Authenticode signature is not valid' }
                 $arguments = [string]$tool.install_args
                 if ($tool.scope -eq 'machine') {
                     try { $process = Start-Process -FilePath $installer -ArgumentList $arguments -Verb RunAs -Wait -PassThru -ErrorAction Stop }

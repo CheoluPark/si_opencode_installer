@@ -30,22 +30,14 @@ pub fn install(
     {
         return Err("LLM key, wiki PAT and work PAT are mandatory".into());
     }
-    let chat_url = crate::validate::llm(&input.api_key)?;
-    let base_url = chat_url
-        .strip_suffix("/chat/completions")
-        .ok_or("Unexpected LLM endpoint")?;
-    crate::validate::mcp("https://dxdev.satreci.com/mcpwiki/mcp", &input.wiki_pat)?;
-    crate::validate::mcp("https://dxdev.satreci.com/mcpwork/mcp", &input.work_pat)?;
     let code = if input.code_pat.trim().is_empty() {
         None
     } else {
         Some(input.code_pat.as_str())
     };
-    if let Some(code) = code {
-        crate::validate::mcp("https://dxdev.satreci.com/mcpcode/mcp", code)?;
-    }
 
     let profile = PathBuf::from(env::var("USERPROFILE")?);
+    let username = env::var("USERNAME")?;
     let root = profile.join(".config/opencode");
     let bundle = staging.join(".config/opencode");
     if !bundle.is_dir() {
@@ -54,14 +46,14 @@ pub fn install(
     if root.exists() && !overwrite_confirmed {
         return Err("Existing OpenCode config requires explicit overwrite confirmation".into());
     }
-    let profile_text = profile.to_string_lossy();
+    let root_text = root.to_string_lossy();
     let replacements = BTreeMap::from([
-        ("{{API_KEY}}", input.api_key.as_str()),
-        ("{{WIKI_PAT}}", input.wiki_pat.as_str()),
-        ("{{WORK_PAT}}", input.work_pat.as_str()),
-        ("{{CODE_PAT}}", code.unwrap_or("")),
-        ("{{USERPROFILE}}", profile_text.as_ref()),
-        ("{{LLM_BASE_URL}}", base_url),
+        ("{{SI_LLM_API_KEY}}", input.api_key.as_str()),
+        ("{{SI_WIKI_PAT}}", input.wiki_pat.as_str()),
+        ("{{SI_WORK_PAT}}", input.work_pat.as_str()),
+        ("{{SI_CODE_PAT}}", code.unwrap_or("")),
+        ("{{SI_USER}}", username.as_str()),
+        ("{{SI_OPENCODE_ROOT}}", root_text.as_ref()),
     ]);
     let generated = tempfile::tempdir()?;
     render_bundle(&bundle, generated.path(), &replacements, code.is_some())?;
@@ -74,7 +66,7 @@ pub fn install(
             config_found = true;
             let text = fs::read_to_string(&path)?;
             let value = config::parse_jsonc(&text)?;
-            validate_v2(&value)?;
+            validate_v2(&value, &generated.path().join("opencode.schema.json"))?;
         }
     }
     if !config_found {
@@ -190,9 +182,8 @@ fn copy_tree(source: &Path, dest: &Path) -> io::Result<()> {
     }
     Ok(())
 }
-fn validate_v2(value: &serde_json::Value) -> Result<(), Box<dyn std::error::Error>> {
-    let schema: serde_json::Value =
-        serde_json::from_str(include_str!("../config/opencode-v2.schema.json"))?;
+fn validate_v2(value: &serde_json::Value, schema_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let schema: serde_json::Value = serde_json::from_slice(&fs::read(schema_path)?)?;
     validate_schema(value, &schema, "$")?;
     Ok(())
 }
@@ -286,7 +277,7 @@ mod deployment_tests {
         render_bundle(&source, &generated, &vars, false).unwrap();
         let rendered = fs::read_to_string(generated.join("opencode.jsonc")).unwrap();
         let config = config::parse_jsonc(&rendered).unwrap();
-        validate_v2(&config).unwrap();
+        validate_v2(&config, Path::new("config/opencode-v2.schema.json")).unwrap();
         assert_eq!(config["model"], "si/GPT");
         assert_eq!(config["home"], "C:\\Users\\clean");
         assert!(!rendered.contains("{{"));
@@ -339,9 +330,9 @@ mod deployment_tests {
     fn bundled_schema_checks_config_value_types() {
         let valid =
             serde_json::json!({"$schema":"https://opencode.ai/config.json", "model":"si/GPT"});
-        validate_v2(&valid).unwrap();
+        validate_v2(&valid, Path::new("config/opencode-v2.schema.json")).unwrap();
         let invalid = serde_json::json!({"model":3});
-        assert!(validate_v2(&invalid).is_err());
+        assert!(validate_v2(&invalid, Path::new("config/opencode-v2.schema.json")).is_err());
     }
     #[test]
     fn deploy_requires_confirmation_and_preserves_backup() {
