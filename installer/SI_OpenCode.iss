@@ -41,20 +41,23 @@ Name: "{group}\SI OpenCode"; Filename: "{app}\si_opencode_updater.exe"; Paramete
 [Code]
 var
   SecretsPage: TInputQueryWizardPage;
+  ReleaseStage: String;
 
 function InitializeSetup: Boolean;
 var
   Code: Integer;
-  StagePath: String;
 begin
   Result := False;
   ExtractTemporaryFile('si_opencode_updater.exe');
-  StagePath := ExpandConstant('{tmp}\si-opencode-current-release');
+  ReleaseStage := ExpandConstant('{tmp}\si-opencode-current-release');
   if not Exec(ExpandConstant('{tmp}\si_opencode_updater.exe'),
-      '--fetch-current-release "' + StagePath + '"', ExpandConstant('{tmp}'), SW_SHOW,
+      '--fetch-current-release "' + ReleaseStage + '"', ExpandConstant('{tmp}'), SW_SHOW,
       ewWaitUntilTerminated, Code) or (Code <> 0) then begin
     MsgBox('서명된 현재 릴리스를 확인하지 못했습니다. 설치를 취소합니다.', mbError, MB_OK);
     Exit;
+  end;
+  if DirExists(ExpandConstant('{userprofile}\.config\opencode')) then begin
+    if MsgBox('기존 OpenCode 설정을 백업한 뒤 새 설정 번들로 교체합니다. 계속하시겠습니까?', mbConfirmation, MB_YESNO) <> IDYES then Exit;
   end;
   Result := True;
 end;
@@ -117,7 +120,7 @@ begin
       ExpandConstant('{app}'), SW_SHOW, ewWaitUntilTerminated, Code) or (Code <> 0) then
     RaiseException('필수 OpenCode Desktop 설치 또는 검증에 실패했습니다.');
   if not Exec(ExpandConstant('{app}\si_opencode_updater.exe'),
-      '--provision "' + InputFile + '"', ExpandConstant('{app}'), SW_SHOW,
+      '--provision "' + InputFile + '" "' + ReleaseStage + '" --overwrite-confirmed', ExpandConstant('{app}'), SW_SHOW,
       ewWaitUntilTerminated, Code) or (Code <> 0) then
     RaiseException('서비스 연결 검증 또는 OpenCode 구성에 실패했습니다. 설치가 완료되지 않았습니다.');
 end;

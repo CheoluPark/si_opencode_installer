@@ -1,5 +1,7 @@
 # OpenCode extension bundle layout
 
+The signed release's `.config/opencode/` tree is deployed as a complete bundle. Text templates may use `{{API_KEY}}`, `{{WIKI_PAT}}`, `{{WORK_PAT}}`, `{{CODE_PAT}}`, `{{LLM_BASE_URL}}`, and `{{USERPROFILE}}`; values are JSON-string escaped before substitution. Wrap the optional code server in `// SI:CODE_PAT:BEGIN` and `// SI:CODE_PAT:END` markers on their own JSONC comments. The block is removed entirely when no code PAT was supplied. `opencode.json` and `opencode.jsonc` are checked against the installer's locally bundled `config/opencode-v2.schema.json` before deployment.
+
 Build the extension bundle outside Git, then extract it to:
 
 ```text

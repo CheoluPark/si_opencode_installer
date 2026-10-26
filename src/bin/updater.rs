@@ -20,7 +20,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     match args.next().as_deref() {
         Some("--provision") => {
             let input = args.next().ok_or("Expected installer input file")?;
-            si_opencode_updater::provision::install(input.as_ref())
+            let stage = args.next().ok_or("Expected release staging directory")?;
+            let confirmed = args.next().as_deref() == Some("--overwrite-confirmed");
+            si_opencode_updater::provision::install(input.as_ref(), stage.as_ref(), confirmed)
         }
         Some("--sync-extensions") => si_opencode_updater::provision::sync_extensions(),
         Some("--fetch-current-release") => {

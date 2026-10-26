@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opencode.ai/config-v2.schema.json",
+  "title": "Bundled OpenCode v2 configuration contract",
+  "type": "object",
+  "properties": {
+    "$schema": { "type": "string" },
+    "model": { "type": "string" },
+    "small_model": { "type": "string" },
+    "provider": { "type": "object" },
+    "providers": { "type": "object" },
+    "mcp": { "type": "object" },
+    "agent": { "type": "object" },
+    "command": { "type": "object" },
+    "plugin": { "type": "array" },
+    "plugins": { "type": "array" },
+    "tools": { "type": "object" },
+    "keybinds": { "type": "object" },
+    "theme": { "type": "string" },
+    "autoupdate": { "type": ["boolean", "string"] }
+  },
+  "additionalProperties": true
+}
