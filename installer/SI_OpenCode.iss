@@ -32,6 +32,7 @@ Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
 Source: "{#PayloadRoot}\si_opencode_updater.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PayloadRoot}\si_opencode_updater.exe"; Flags: dontcopy
 Source: "..\scripts\setup-runtime.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\scripts\setup-schedule.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\scripts\verify-desktop.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\config\extensions.example.json"; DestDir: "{localappdata}\SI OpenCode"; DestName: "extensions.json"; Flags: ignoreversion onlyifdoesntexist
 
@@ -134,5 +135,9 @@ begin
       '--provision "' + InputFile + '" "' + ReleaseStage + '" --overwrite-confirmed', ExpandConstant('{app}'), SW_SHOW,
       ewWaitUntilTerminated, Code) or (Code <> 0) then
     RaiseException('서비스 연결 검증 또는 OpenCode 구성에 실패했습니다. 설치가 완료되지 않았습니다.');
+  if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+      '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\setup-schedule.ps1') + '" -AppDir "' + ExpandConstant('{app}') + '"',
+      ExpandConstant('{app}'), SW_SHOW, ewWaitUntilTerminated, Code) or (Code <> 0) then
+    RaiseException('업데이트 확인 일정 구성에 실패했습니다.');
   RebootRequired := FileExists(ExpandConstant('{tmp}\si-opencode-reboot-required'));
 end;

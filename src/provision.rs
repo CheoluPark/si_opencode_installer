@@ -73,6 +73,11 @@ pub fn install(
         return Err("Staged config bundle has no opencode.json or opencode.jsonc".into());
     }
     deploy_bundle(generated.path(), &root, overwrite_confirmed)?;
+    let manifest: serde_json::Value = serde_json::from_slice(&fs::read(staging.join("release.json"))?)?;
+    let version = manifest["version"].as_str().ok_or("Staged release has no version")?;
+    let state_dir = PathBuf::from(env::var("LOCALAPPDATA")?).join("SI OpenCode");
+    fs::create_dir_all(&state_dir)?;
+    fs::write(state_dir.join("installed-release.json"), serde_json::json!({"version":version}).to_string())?;
     Ok(())
 }
 

@@ -100,6 +100,38 @@ pub fn verify_manifest(
 }
 
 #[cfg(windows)]
+pub fn current_version_from_local_config() -> Result<String, Box<dyn std::error::Error>> {
+    use crate::credentials;
+    let config_path = std::path::PathBuf::from(std::env::var("LOCALAPPDATA")?)
+        .join("SI OpenCode/extensions.json");
+    let config = if config_path.is_file() { serde_json::from_slice(&fs::read(config_path)?)? } else { NasConfig::default() };
+    let mut account = match credentials::load()? {
+        Some(account) => account,
+        None => credentials::prompt()?.ok_or("NAS sign-in cancelled")?,
+    };
+    loop {
+        match Nas::login(&config, &account.0, &account.1) {
+            Ok(nas) => {
+                credentials::save(&account.0, &account.1)?;
+                let temp = tempfile::tempdir()?;
+                let manifest = temp.path().join("release.json");
+                let signature = temp.path().join("release.sig");
+                let signature_path = config.release_path.strip_suffix("release.json").ok_or("Release path must end in release.json")?.to_owned() + "release.sig";
+                let result = (|| -> Result<String, Box<dyn std::error::Error>> {
+                    nas.download(&config.release_path, &manifest, MANIFEST_LIMIT, None)?;
+                    nas.download(&signature_path, &signature, SIGNATURE_LIMIT, None)?;
+                    Ok(verify_manifest(&fs::read(&manifest)?, &fs::read(&signature)?, PUBLISHER_KEY)?.version)
+                })();
+                let _ = nas.logout();
+                return result;
+            }
+            Err(NasError::Authentication) => account = credentials::prompt()?.ok_or("NAS sign-in cancelled")?,
+            Err(error) => return Err(error.into()),
+        }
+    }
+}
+
+#[cfg(windows)]
 pub fn fetch_for_installer(
     staging: &Path,
     config: &NasConfig,
