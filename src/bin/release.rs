@@ -57,17 +57,13 @@ fn build(root: &Path, version: &str, key_path: &Path) -> Result<(), Box<dyn std:
     if files.is_empty() {
         return Err("Staging directory is empty".into());
     }
-    for required in [
-        "si_opencode_installer.exe",
-        "opencode_desktop_win64.exe",
-        "opencode-config-bundle.tar.gz",
-    ] {
-        if !files.contains_key(required) {
-            return Err(format!("Missing required release file: {required}").into());
+    for prefix in [".config/opencode/", "tools/"] {
+        if !files.keys().any(|name| name.starts_with(prefix)) {
+            return Err(format!("Release must include files under {prefix}").into());
         }
     }
-    if !files.keys().any(|name| name.starts_with("schemas/")) {
-        return Err("Release must include local schema files under schemas/".into());
+    if !files.contains_key("tools/tools-manifest.json") {
+        return Err("Missing required release file: tools/tools-manifest.json".into());
     }
     let schema_hashes = files
         .iter()
@@ -80,8 +76,8 @@ fn build(root: &Path, version: &str, key_path: &Path) -> Result<(), Box<dyn std:
         schema_hashes,
     })?;
     let signature = signer.sign(&manifest);
-    fs::write(root.join("release-manifest.json"), &manifest)?;
-    fs::write(root.join("release-manifest.sig"), signature.as_ref())?;
+    fs::write(root.join("release.json"), &manifest)?;
+    fs::write(root.join("release.sig"), signature.as_ref())?;
     Ok(())
 }
 
@@ -111,7 +107,7 @@ fn walk(root: &Path, dir: &Path, files: &mut BTreeMap<String, Artifact>) -> io::
             .unwrap()
             .to_string_lossy()
             .replace('\\', "/");
-        if name == "release-manifest.json" || name == "release-manifest.sig" {
+        if name == "release.json" || name == "release.sig" {
             continue;
         }
         let data = fs::read(&path)?;
@@ -136,21 +132,20 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn build_hashes_files_and_schema_and_signs_manifest() {
+    fn build_hashes_final_layout_and_signs_release() {
         let dir = tempdir().unwrap();
         let stage = dir.path().join("staging");
-        fs::create_dir_all(stage.join("schemas")).unwrap();
-        fs::write(stage.join("si_opencode_installer.exe"), b"installer").unwrap();
-        fs::write(stage.join("opencode_desktop_win64.exe"), b"desktop").unwrap();
-        fs::write(stage.join("opencode-config-bundle.tar.gz"), b"bundle").unwrap();
-        fs::write(stage.join("app.exe"), b"release").unwrap();
-        fs::write(stage.join("schemas/tool.json"), b"{}").unwrap();
+        fs::create_dir_all(stage.join(".config/opencode")).unwrap();
+        fs::create_dir_all(stage.join("tools")).unwrap();
+        fs::write(stage.join(".config/opencode/opencode.jsonc"), b"{}").unwrap();
+        fs::write(stage.join("tools/tool.exe"), b"tool").unwrap();
+        fs::write(stage.join("tools/tools-manifest.json"), b"{}").unwrap();
         let pair = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).unwrap();
         let key = dir.path().join("key.pk8");
         fs::write(&key, pair.as_ref()).unwrap();
         build(&stage, "7", &key).unwrap();
-        let manifest = fs::read(stage.join("release-manifest.json")).unwrap();
-        let signature = fs::read(stage.join("release-manifest.sig")).unwrap();
+        let manifest = fs::read(stage.join("release.json")).unwrap();
+        let signature = fs::read(stage.join("release.sig")).unwrap();
         UnparsedPublicKey::new(
             &ED25519,
             Ed25519KeyPair::from_pkcs8(pair.as_ref())
@@ -161,10 +156,10 @@ mod tests {
         .verify(&manifest, &signature)
         .unwrap();
         let value: serde_json::Value = serde_json::from_slice(&manifest).unwrap();
-        assert_eq!(value["files"]["app.exe"]["bytes"], 7);
+        assert_eq!(value["files"]["tools/tool.exe"]["bytes"], 4);
         assert_eq!(
-            value["schema_hashes"]["schemas/tool.json"],
-            format!("{:x}", Sha256::digest(b"{}"))
+            value["files"][".config/opencode/opencode.jsonc"]["bytes"],
+            2
         );
     }
 }

@@ -23,6 +23,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             si_opencode_updater::provision::install(input.as_ref())
         }
         Some("--sync-extensions") => si_opencode_updater::provision::sync_extensions(),
+        Some("--fetch-current-release") => {
+            let stage = args.next().ok_or("Expected release staging directory")?;
+            si_opencode_updater::release_download::fetch_from_local_config(stage.as_ref())
+        }
         Some("--launch") => {
             let desktop = std::path::PathBuf::from(env::var("LOCALAPPDATA")?)
                 .join("Programs/@opencodedesktop/OpenCode.exe");
@@ -32,6 +36,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             Command::new(desktop).spawn()?;
             Ok(())
         }
-        _ => Err("Usage: si_opencode_updater --provision <input-file> | --sync-extensions | --launch".into()),
+        _ => Err("Usage: si_opencode_updater --provision <input-file> | --sync-extensions | --fetch-current-release <staging-dir> | --launch".into()),
     }
 }

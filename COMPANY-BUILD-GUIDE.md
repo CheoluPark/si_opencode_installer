@@ -76,24 +76,24 @@ The build:
 
 ## 6. Assemble and publish a FileStation release
 
-Create a temporary `staging/` directory on the build PC with exactly this content:
+Create a temporary `staging/` directory on the build PC with the final install content:
 
 ```text
 staging/
-├── si_opencode_installer.exe
-├── opencode_desktop_win64.exe
-├── opencode-config-bundle.tar.gz
-└── schemas/                 # local JSON schemas used by the installed tools
+├── .config/opencode/        # deployed OpenCode config and extensions
+└── tools/
+    ├── tools-manifest.json
+    └── ...                  # managed tools referenced by that manifest
 ```
 
-Copy the three build outputs from `out/` and the approved local schema files into it, then build the signed manifest:
+Then build the signed release:
 
 ```powershell
 cargo run --offline --bin release -- build .\staging 1 `
   "$env:LOCALAPPDATA\SI OpenCode\release-keys\publisher-ed25519.pk8"
 ```
 
-This writes `release-manifest.json` (version, SHA-256 and byte size for every staged file, plus local schema hashes in `schema_hashes`) and its Ed25519 detached signature, `release-manifest.sig`. The signature covers the exact manifest bytes. Verify the manifest and signature with the published raw Ed25519 public key before promotion.
+This writes `release.json` (version and SHA-256/byte size for every staged file) and its Ed25519 detached signature, `release.sig`. The signature covers the exact manifest bytes. Verify the manifest and signature with the published raw Ed25519 public key before promotion. The client updater embeds that public key at build time; pass `-PublicKey` to `build.ps1` when building the installer. Keep the private key publisher-only.
 
 On FileStation, keep only the release under `current/` and an in-progress `staging/` folder:
 
@@ -116,7 +116,7 @@ out/
 └── opencode-config-bundle.tar.gz
 ```
 
-The installer EXE is intentionally small. Extract the bundle before installing; the installer only registers its paths in `opencode.jsonc`.
+The installer downloads and verifies the signed current release before starting installation. Its configurable `release_path` is stored in `%LOCALAPPDATA%\SI OpenCode\extensions.json` and defaults to the FileStation `current/release.json` path.
 
 ## 8. First corporate-network test
 

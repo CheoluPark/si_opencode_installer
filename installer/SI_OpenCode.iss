@@ -30,6 +30,7 @@ Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
 
 [Files]
 Source: "{#PayloadRoot}\si_opencode_updater.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PayloadRoot}\si_opencode_updater.exe"; Flags: dontcopy
 Source: "{src}\opencode_desktop_win64.exe"; DestDir: "{app}"; Flags: external ignoreversion
 Source: "..\scripts\setup-runtime.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\scripts\verify-desktop.ps1"; DestDir: "{app}"; Flags: ignoreversion
@@ -41,6 +42,23 @@ Name: "{group}\SI OpenCode"; Filename: "{app}\si_opencode_updater.exe"; Paramete
 [Code]
 var
   SecretsPage: TInputQueryWizardPage;
+
+function InitializeSetup: Boolean;
+var
+  Code: Integer;
+  StagePath: String;
+begin
+  Result := False;
+  ExtractTemporaryFile('si_opencode_updater.exe');
+  StagePath := ExpandConstant('{tmp}\si-opencode-current-release');
+  if not Exec(ExpandConstant('{tmp}\si_opencode_updater.exe'),
+      '--fetch-current-release "' + StagePath + '"', ExpandConstant('{tmp}'), SW_SHOW,
+      ewWaitUntilTerminated, Code) or (Code <> 0) then begin
+    MsgBox('서명된 현재 릴리스를 확인하지 못했습니다. 설치를 취소합니다.', mbError, MB_OK);
+    Exit;
+  end;
+  Result := True;
+end;
 
 function JsonString(const Text: String): String;
 var

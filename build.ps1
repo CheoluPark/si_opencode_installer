@@ -1,3 +1,6 @@
+param(
+    [string]$PublicKey = (Join-Path $env:LOCALAPPDATA 'SI OpenCode\release-keys\publisher-ed25519.pub')
+)
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 $payload = Join-Path $PSScriptRoot 'payload'
@@ -7,6 +10,8 @@ $bundle = Join-Path $payload 'opencode-config-bundle.tar.gz'
 foreach ($path in @('opencode_desktop_win64.exe', 'managed\mcp', 'managed\plugin', 'managed\skills', 'managed\lsp')) {
     if (-not (Test-Path -LiteralPath (Join-Path $payload $path))) { throw "Missing required asset: payload/$path" }
 }
+if (-not (Test-Path -LiteralPath $PublicKey)) { throw 'Publisher public key is required to build the updater' }
+$env:SI_RELEASE_PUBLIC_KEY_PATH = (Resolve-Path -LiteralPath $PublicKey).Path
 if ((Get-AuthenticodeSignature -LiteralPath (Join-Path $payload 'opencode_desktop_win64.exe')).Status -ne 'Valid') {
     throw 'Desktop installer signature is not valid'
 }
