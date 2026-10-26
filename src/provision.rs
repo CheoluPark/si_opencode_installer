@@ -38,13 +38,16 @@ pub fn install(input_file: &Path, staging: &Path, overwrite_confirmed: bool) -> 
     ]);
     let generated = tempfile::tempdir()?;
     render_bundle(&bundle, generated.path(), &replacements, code.is_some())?;
+    let mut config_found = false;
     for path in walk_files(generated.path())? {
         if path.file_name().is_some_and(|name| name == "opencode.json" || name == "opencode.jsonc") {
+            config_found = true;
             let text = fs::read_to_string(&path)?;
             let value = config::parse_jsonc(&text)?;
             validate_v2(&value)?;
         }
     }
+    if !config_found { return Err("Staged config bundle has no opencode.json or opencode.jsonc".into()); }
     deploy_bundle(generated.path(), &root, overwrite_confirmed)?;
     Ok(())
 }
