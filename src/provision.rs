@@ -258,6 +258,53 @@ fn validate_schema(
 #[cfg(test)]
 mod deployment_tests {
     use super::*;
+
+    #[test]
+    fn clean_install_config_bundle_is_rendered_validated_and_deployed_atomically() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("release/.config/opencode");
+        let generated = temp.path().join("generated");
+        let root = temp.path().join("profile/.config/opencode");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(
+            source.join("opencode.jsonc"),
+            r#"{"$schema":"https://opencode.ai/config.json","model":"{{API_KEY}}", // SI:CODE_PAT:BEGIN
+"code":"{{CODE_PAT}}",
+// SI:CODE_PAT:END
+"home":"{{USERPROFILE}}","base":"{{LLM_BASE_URL}}"}"#,
+        )
+        .unwrap();
+        let vars = BTreeMap::from([
+            ("{{API_KEY}}", "si/GPT"),
+            ("{{WIKI_PAT}}", "wiki"),
+            ("{{WORK_PAT}}", "work"),
+            ("{{CODE_PAT}}", ""),
+            ("{{USERPROFILE}}", "C:\\Users\\clean"),
+            ("{{LLM_BASE_URL}}", "https://llm.example/v1"),
+        ]);
+
+        render_bundle(&source, &generated, &vars, false).unwrap();
+        let rendered = fs::read_to_string(generated.join("opencode.jsonc")).unwrap();
+        let config = config::parse_jsonc(&rendered).unwrap();
+        validate_v2(&config).unwrap();
+        assert_eq!(config["model"], "si/GPT");
+        assert_eq!(config["home"], "C:\\Users\\clean");
+        assert!(!rendered.contains("{{"));
+
+        deploy_bundle(&generated, &root, false).unwrap();
+        assert_eq!(
+            fs::read_to_string(root.join("opencode.jsonc")).unwrap(),
+            rendered
+        );
+        fs::write(root.join("user-data"), "keep").unwrap();
+        assert!(deploy_bundle(&generated, &root, false).is_err());
+        assert_eq!(fs::read_to_string(root.join("user-data")).unwrap(), "keep");
+
+        fs::write(source.join("opencode.jsonc"), r#"{"pat":"{{BROKEN}}"}"#).unwrap();
+        assert!(render_bundle(&source, &generated, &vars, false).is_err());
+        assert_eq!(fs::read_to_string(root.join("user-data")).unwrap(), "keep");
+    }
+
     #[test]
     fn renders_markers_and_removes_optional_code_region() {
         let temp = tempfile::tempdir().unwrap();
