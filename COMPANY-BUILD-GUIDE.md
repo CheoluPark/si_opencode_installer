@@ -29,9 +29,9 @@ payload/
             └── node.exe     # bundled Node runtime for local MCP commands
 ```
 
-`payload/managed/` is copied unchanged to `%USERPROFILE%\.config\opencode\` through `managed-runtime.tar.gz`.
+`payload/managed/` is copied unchanged into `opencode-config-bundle.tar.gz`. Extract that archive to `%USERPROFILE%\.config\opencode\` before running the installer.
 
-Do **not** put an npm-installable package into `payload/managed/`. Put it in Nexus and add it to the package list described below.
+Put every required dependency in this bundle. The closed-network npm proxy is not used.
 
 ## 3. Required local signing keys
 
@@ -50,54 +50,9 @@ cargo run --offline --bin release -- keygen <private-key.pk8> <public-key.pub>
 
 Never commit or distribute `publisher-ed25519.pk8`.
 
-## 4. Nexus configuration — required edit
+## 4. Later extension updates
 
-Edit `config/managed-delivery.json` before building.
-
-Replace this value:
-
-```json
-"npmRegistry": "https://NEXUS_NPM_REGISTRY_PLACEHOLDER/repository/npm-group/"
-```
-
-with the actual corporate Nexus npm-group URL, for example:
-
-```json
-"npmRegistry": "https://nexus.company.example/repository/npm-group/"
-```
-
-The installer intentionally stops if `PLACEHOLDER` is still present.
-
-### Package entries
-
-Every npm package has this shape:
-
-```json
-{
-  "target": "mcp/example",
-  "package": "@company/example-mcp",
-  "version": "1.2.3"
-}
-```
-
-- `target` is relative to `%USERPROFILE%\.config\opencode\`.
-- Use only `mcp/`, `plugin/`, `skills/`, or `lsp/` as the first target folder.
-- Pin an exact version. Do not use `latest`, `^`, or `~`.
-- The installer runs `npm install --prefix <target> <package>@<version>`.
-
-Current entries must exist in Nexus before the installer is tested:
-
-- `@dietrichgebert/ponytail@5.3.2`
-- `context-mode@1.0.169`
-- `opencode-planning-with-files@1.2.0`
-- `ui-ux-pro-max-cli@2.15.0`
-- `rea-agents@6.7.0`
-- `@next-ai-drawio/mcp-server@0.4.6`
-- `pyright@1.1.414`
-- `typescript@7.0.2`
-- `typescript-language-server@6.0.2`
-
-If one cannot be served by Nexus, remove its entry and place its reviewed files under the matching `payload/managed/{mcp,plugin,skills,lsp}/` folder instead.
+Use `config/extensions.example.json` to set the FileStation manifest path. See `config/BUNDLE-LAYOUT.md` for the manifest format. Running `si_opencode_updater.exe --sync-extensions` downloads only the listed extension files and registers each managed MCP as disabled.
 
 ## 5. Build
 
@@ -114,11 +69,10 @@ Increase `-Version` for every release.
 
 The build:
 
-1. creates `payload/managed-runtime.tar.gz` from direct-copy files only;
-2. signs its direct-copy file manifest;
-3. builds `si_opencode_updater.exe`;
-4. compiles the Inno installer;
-5. copies the distribution files to `out/`.
+1. creates `payload/opencode-config-bundle.tar.gz` from the full extension tree;
+2. builds `si_opencode_updater.exe`;
+3. compiles the Inno installer;
+4. copies the distribution files to `out/`.
 
 ## 6. Files to distribute
 
@@ -128,10 +82,10 @@ Keep these three files in the **same folder**:
 out/
 ├── si_opencode_installer.exe
 ├── opencode_desktop_win64.exe
-└── managed-runtime.tar.gz
+└── opencode-config-bundle.tar.gz
 ```
 
-The installer EXE is intentionally small. It verifies that the two sidecars exist while installing.
+The installer EXE is intentionally small. Extract the bundle before installing; the installer only registers its paths in `opencode.jsonc`.
 
 ## 7. First corporate-network test
 

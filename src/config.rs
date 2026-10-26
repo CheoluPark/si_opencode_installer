@@ -114,6 +114,10 @@ fn set(config: &mut Value, path: &str, value: Option<Value>) -> Result<(), Strin
     Err("Empty configuration path".into())
 }
 
+pub fn remove(config: &mut Value, path: &str) -> Result<(), String> {
+    set(config, path, None)
+}
+
 fn fingerprint(value: &Value) -> String {
     sha256(serde_json::to_vec(value).unwrap().as_slice())
 }
@@ -213,11 +217,11 @@ pub fn initial(
         .into_owned();
     result.insert(
         "mcp.servers.rea".into(),
-        json!({"type":"local","command":[node,rea,"mcp"]}),
+        json!({"type":"local","command":[node,rea,"mcp"],"disabled":true}),
     );
     result.insert(
         "mcp.servers.drawio".into(),
-        json!({"type":"local","command":[node,drawio]}),
+        json!({"type":"local","command":[node,drawio],"disabled":true}),
     );
     result
 }

@@ -22,11 +22,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             let input = args.next().ok_or("Expected installer input file")?;
             si_opencode_updater::provision::install(input.as_ref())
         }
-        Some("--install-managed") => {
-            let app = args.next().ok_or("Expected application directory")?;
-            si_opencode_updater::provision::install_managed(app.as_ref())
-        }
-        Some("--uninstall-managed") => si_opencode_updater::provision::uninstall_managed(),
+        Some("--sync-extensions") => si_opencode_updater::provision::sync_extensions(),
         Some("--launch") => {
             let desktop = std::path::PathBuf::from(env::var("LOCALAPPDATA")?)
                 .join("Programs/@opencodedesktop/OpenCode.exe");
@@ -36,6 +32,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             Command::new(desktop).spawn()?;
             Ok(())
         }
-        _ => Err("Usage: si_opencode_updater --provision <input-file> | --install-managed <app-dir> | --uninstall-managed | --launch".into()),
+        _ => Err("Usage: si_opencode_updater --provision <input-file> | --sync-extensions | --launch".into()),
     }
 }

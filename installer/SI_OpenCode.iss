@@ -31,19 +31,12 @@ Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
 [Files]
 Source: "{#PayloadRoot}\si_opencode_updater.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{src}\opencode_desktop_win64.exe"; DestDir: "{app}"; Flags: external ignoreversion
-Source: "{#PayloadRoot}\manifest.json"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#PayloadRoot}\manifest.sig"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\scripts\setup-runtime.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\scripts\verify-desktop.ps1"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\config\managed-delivery.json"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{src}\managed-runtime.tar.gz"; DestDir: "{app}"; Flags: external ignoreversion
-Source: "{#PayloadRoot}\updater.json"; DestDir: "{localappdata}\SI OpenCode"; Flags: ignoreversion onlyifdoesntexist
+Source: "..\config\extensions.example.json"; DestDir: "{localappdata}\SI OpenCode"; DestName: "extensions.json"; Flags: ignoreversion onlyifdoesntexist
 
 [Icons]
 Name: "{group}\SI OpenCode"; Filename: "{app}\si_opencode_updater.exe"; Parameters: "--launch"
-
-[UninstallRun]
-Filename: "{app}\si_opencode_updater.exe"; Parameters: "--uninstall-managed"; Flags: runhidden; RunOnceId: "RemoveManaged"
 
 [Code]
 var
@@ -106,7 +99,7 @@ begin
     RaiseException('서비스 연결 검증 또는 OpenCode 구성에 실패했습니다. 설치가 완료되지 않았습니다.');
   if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
       '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\setup-runtime.ps1') +
-      '" -AppDir "' + ExpandConstant('{app}') + '" -ManagedRuntime "' + ExpandConstant('{app}\managed-runtime.tar.gz') + '" -NpmPackages "' + ExpandConstant('{app}\managed-delivery.json') + '"',
+      '" -AppDir "' + ExpandConstant('{app}') + '"',
       ExpandConstant('{app}'), SW_SHOW, ewWaitUntilTerminated, Code) or (Code <> 0) then
     RaiseException('Desktop/CLI 및 관리 확장 설치에 실패했습니다. 재실행하여 복구하세요.');
 end;
