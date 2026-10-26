@@ -81,6 +81,37 @@ pub fn install(
     Ok(())
 }
 
+/// Applies a new release without re-rendering the template. The existing
+/// opencode.jsonc contains the user's API key and PATs and must remain intact.
+pub fn apply_update(staging: &Path) -> Result<String, Box<dyn std::error::Error>> {
+    let root = PathBuf::from(env::var("USERPROFILE")?).join(".config/opencode");
+    let bundle = staging.join(".config/opencode");
+    if !root.is_dir() || !bundle.is_dir() {
+        return Err("OpenCode config bundle is unavailable for update".into());
+    }
+    for entry in fs::read_dir(&bundle)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        if matches!(name.to_string_lossy().as_ref(), "opencode.json" | "opencode.jsonc" | "opencode.template.jsonc" | "opencode.schema.json") {
+            continue;
+        }
+        let source = entry.path();
+        let target = root.join(&name);
+        if source.is_dir() {
+            if target.exists() { fs::remove_dir_all(&target)?; }
+            copy_tree(&source, &target)?;
+        } else {
+            fs::copy(source, target)?;
+        }
+    }
+    let manifest: serde_json::Value = serde_json::from_slice(&fs::read(staging.join("release.json"))?)?;
+    let version = manifest["version"].as_str().ok_or("Staged release has no version")?.to_owned();
+    let state_dir = PathBuf::from(env::var("LOCALAPPDATA")?).join("SI OpenCode");
+    fs::create_dir_all(&state_dir)?;
+    fs::write(state_dir.join("installed-release.json"), serde_json::json!({"version":version}).to_string())?;
+    Ok(version)
+}
+
 fn deploy_bundle(
     source: &Path,
     root: &Path,

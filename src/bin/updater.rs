@@ -30,6 +30,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             si_opencode_updater::release_download::fetch_from_local_config(stage.as_ref())
         }
         Some("--check-update") => check_update(),
+        Some("--apply-update") => apply_update(),
         Some("--launch") => {
             let desktop = std::path::PathBuf::from(env::var("LOCALAPPDATA")?)
                 .join("Programs/@opencodedesktop/OpenCode.exe");
@@ -39,7 +40,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             Command::new(desktop).spawn()?;
             Ok(())
         }
-        _ => Err("Usage: si_opencode_updater --provision <input-file> | --sync-extensions | --fetch-current-release <staging-dir> | --check-update | --launch".into()),
+        _ => Err("Usage: si_opencode_updater --provision <input-file> | --sync-extensions | --fetch-current-release <staging-dir> | --check-update | --apply-update | --launch".into()),
     }
 }
 
@@ -54,9 +55,19 @@ fn check_update() -> Result<(), Box<dyn std::error::Error>> {
     let text: Vec<_> = format!("새 SI OpenCode release {latest}가 있습니다. 최신 installer를 실행해 업데이트하시겠습니까?").encode_utf16().chain([0]).collect();
     let caption: Vec<_> = "SI OpenCode 업데이트".encode_utf16().chain([0]).collect();
     let accepted = unsafe { MessageBoxW(std::ptr::null_mut(), text.as_ptr(), caption.as_ptr(), MB_ICONINFORMATION | MB_YESNO) == IDYES };
-    if accepted {
-        let message: Vec<_> = "회사 공유 폴더의 최신 si_opencode_installer.exe를 실행해 업데이트를 진행하세요.".encode_utf16().chain([0]).collect();
-        unsafe { MessageBoxW(std::ptr::null_mut(), message.as_ptr(), caption.as_ptr(), MB_ICONINFORMATION); }
-    }
+    if accepted { apply_update()?; }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn apply_update() -> Result<(), Box<dyn std::error::Error>> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONINFORMATION};
+    let temp = tempfile::tempdir()?;
+    let stage = temp.path().join("release");
+    si_opencode_updater::release_download::fetch_from_local_config(&stage)?;
+    let version = si_opencode_updater::provision::apply_update(&stage)?;
+    let text: Vec<_> = format!("SI OpenCode release {version}를 적용했습니다. 기존 API Key와 PAT는 유지됩니다.").encode_utf16().chain([0]).collect();
+    let caption: Vec<_> = "SI OpenCode 업데이트".encode_utf16().chain([0]).collect();
+    unsafe { MessageBoxW(std::ptr::null_mut(), text.as_ptr(), caption.as_ptr(), MB_ICONINFORMATION); }
     Ok(())
 }
