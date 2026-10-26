@@ -102,8 +102,20 @@ procedure CurStepChanged(CurStep: TSetupStep);
 var
   Data: TArrayOfString;
   InputFile: String;
+  WarningSummary: String;
+  I: Integer;
   Code: Integer;
 begin
+  if CurStep = ssDone then begin
+    InputFile := ExpandConstant('{tmp}\si-opencode-optional-tool-warnings.txt');
+    if FileExists(InputFile) then begin
+      LoadStringsFromFile(InputFile, Data);
+      for I := 0 to GetArrayLength(Data) - 1 do WarningSummary := WarningSummary + Data[I] + #13#10;
+      if WarningSummary <> '' then
+        MsgBox('설치는 완료되었지만 선택 도구 일부를 건너뛰거나 설치하지 못했습니다:' + #13#10 + #13#10 + WarningSummary, mbInformation, MB_OK);
+    end;
+    Exit;
+  end;
   if CurStep <> ssPostInstall then Exit;
   InputFile := ExpandConstant('{tmp}\si-opencode-input.json');
   SetArrayLength(Data, 1);
@@ -114,13 +126,15 @@ begin
   if not SaveStringsToUTF8FileWithoutBOM(InputFile, Data, False) then
     RaiseException('설치 입력을 안전하게 준비할 수 없습니다.');
   if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
-      '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\setup-runtime.ps1') +
-      '" -AppDir "' + ExpandConstant('{app}') + '" -ReleaseDir "' +
-      ExpandConstant('{tmp}\si-opencode-current-release') + '"',
+       '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\setup-runtime.ps1') +
+       '" -AppDir "' + ExpandConstant('{app}') + '" -ReleaseDir "' +
+       ExpandConstant('{tmp}\si-opencode-current-release') + '" -WarningFile "' + ExpandConstant('{tmp}\si-opencode-optional-tool-warnings.txt') + '"',
       ExpandConstant('{app}'), SW_SHOW, ewWaitUntilTerminated, Code) or (Code <> 0) then
     RaiseException('필수 OpenCode Desktop 설치 또는 검증에 실패했습니다.');
   if not Exec(ExpandConstant('{app}\si_opencode_updater.exe'),
       '--provision "' + InputFile + '" "' + ReleaseStage + '" --overwrite-confirmed', ExpandConstant('{app}'), SW_SHOW,
       ewWaitUntilTerminated, Code) or (Code <> 0) then
     RaiseException('서비스 연결 검증 또는 OpenCode 구성에 실패했습니다. 설치가 완료되지 않았습니다.');
+  if FileExists(ExpandConstant('{tmp}\si-opencode-reboot-required')) then
+    Exec(ExpandConstant('{sys}\shutdown.exe'), '/r /t 60 /c "SI OpenCode installation requires a restart."', '', SW_HIDE, ewNoWait, Code);
 end;
