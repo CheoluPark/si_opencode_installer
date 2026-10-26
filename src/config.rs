@@ -225,10 +225,27 @@ mod tests {
 
     #[test]
     fn optional_code_pat_adds_only_its_mcp_server_when_present() {
-        let without_code = initial("api", "wiki", "work", None, "https://ai.example/v1", std::path::Path::new("C:/Users/test"));
+        let without_code = initial(
+            "api",
+            "wiki",
+            "work",
+            None,
+            "https://ai.example/v1",
+            std::path::Path::new("C:/Users/test"),
+        );
         assert!(!without_code.keys().any(|key| key == "mcp.servers.code"));
-        let with_code = initial("api", "wiki", "work", Some("code-token"), "https://ai.example/v1", std::path::Path::new("C:/Users/test"));
-        assert_eq!(with_code["mcp.servers.code"]["headers"]["Authorization"], "Bearer code-token");
+        let with_code = initial(
+            "api",
+            "wiki",
+            "work",
+            Some("code-token"),
+            "https://ai.example/v1",
+            std::path::Path::new("C:/Users/test"),
+        );
+        assert_eq!(
+            with_code["mcp.servers.code"]["headers"]["Authorization"],
+            "Bearer code-token"
+        );
     }
 
     #[test]
