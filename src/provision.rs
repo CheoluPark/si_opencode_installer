@@ -89,20 +89,8 @@ pub fn apply_update(staging: &Path) -> Result<String, Box<dyn std::error::Error>
     if !root.is_dir() || !bundle.is_dir() {
         return Err("OpenCode config bundle is unavailable for update".into());
     }
-    for entry in fs::read_dir(&bundle)? {
-        let entry = entry?;
-        let name = entry.file_name();
-        if matches!(name.to_string_lossy().as_ref(), "opencode.json" | "opencode.jsonc" | "opencode.template.jsonc" | "opencode.schema.json") {
-            continue;
-        }
-        let source = entry.path();
-        let target = root.join(&name);
-        if source.is_dir() {
-            if target.exists() { fs::remove_dir_all(&target)?; }
-            copy_tree(&source, &target)?;
-        } else {
-            fs::copy(source, target)?;
-        }
+    for name in ["mcp", "plugin", "skills", "lsp"] {
+        replace_managed_directory(&bundle.join(name), &root.join(name))?;
     }
     let manifest: serde_json::Value = serde_json::from_slice(&fs::read(staging.join("release.json"))?)?;
     let version = manifest["version"].as_str().ok_or("Staged release has no version")?.to_owned();
@@ -110,6 +98,23 @@ pub fn apply_update(staging: &Path) -> Result<String, Box<dyn std::error::Error>
     fs::create_dir_all(&state_dir)?;
     fs::write(state_dir.join("installed-release.json"), serde_json::json!({"version":version}).to_string())?;
     Ok(version)
+}
+
+fn replace_managed_directory(source: &Path, target: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let parent = target.parent().ok_or("Invalid managed directory")?;
+    let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+    let staged = parent.join(format!(".si-update-new-{}-{stamp}", target.file_name().unwrap().to_string_lossy()));
+    let backup = parent.join(format!(".si-update-old-{}-{stamp}", target.file_name().unwrap().to_string_lossy()));
+    if source.is_dir() { copy_tree(source, &staged)?; }
+    if target.exists() { fs::rename(target, &backup)?; }
+    let result = if source.is_dir() { fs::rename(&staged, target) } else { Ok(()) };
+    if let Err(error) = result {
+        let _ = fs::remove_dir_all(&staged);
+        if backup.exists() { let _ = fs::rename(&backup, target); }
+        return Err(error.into());
+    }
+    if backup.exists() { fs::remove_dir_all(backup)?; }
+    Ok(())
 }
 
 fn deploy_bundle(
