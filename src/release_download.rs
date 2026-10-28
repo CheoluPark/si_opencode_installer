@@ -103,7 +103,7 @@ pub fn verify_manifest(
 pub fn current_version_from_local_config() -> Result<String, Box<dyn std::error::Error>> {
     use crate::credentials;
     let config_path = std::path::PathBuf::from(std::env::var("LOCALAPPDATA")?)
-        .join("SI OpenCode/extensions.json");
+        .join("SI OpenCode/release.json");
     let config = if config_path.is_file() { serde_json::from_slice(&fs::read(config_path)?)? } else { NasConfig::default() };
     let mut account = match credentials::load()? {
         Some(account) => account,

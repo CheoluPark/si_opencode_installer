@@ -67,7 +67,7 @@ fn build(root: &Path, version: &str, key_path: &Path) -> Result<(), Box<dyn std:
     }
     let schema_hashes = files
         .iter()
-        .filter(|(name, _)| name.starts_with("schemas/"))
+        .filter(|(name, _)| name.ends_with(".schema.json"))
         .map(|(name, artifact)| (name.clone(), artifact.sha256.clone()))
         .collect();
     let manifest = serde_json::to_vec(&Manifest {
@@ -138,6 +138,7 @@ mod tests {
         fs::create_dir_all(stage.join(".config/opencode")).unwrap();
         fs::create_dir_all(stage.join("tools")).unwrap();
         fs::write(stage.join(".config/opencode/opencode.jsonc"), b"{}").unwrap();
+        fs::write(stage.join(".config/opencode/opencode.schema.json"), b"{}").unwrap();
         fs::write(stage.join("tools/tool.exe"), b"tool").unwrap();
         fs::write(stage.join("tools/tools-manifest.json"), b"{}").unwrap();
         let pair = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).unwrap();
@@ -161,5 +162,6 @@ mod tests {
             value["files"][".config/opencode/opencode.jsonc"]["bytes"],
             2
         );
+        assert!(value["schema_hashes"][".config/opencode/opencode.schema.json"].is_string());
     }
 }

@@ -1,52 +1,9 @@
 # SI OpenCode installer
 
-Windows installer for SI OpenCode.
+Windows installer and updater for a signed SI OpenCode release hosted on `file.satreci.com`.
 
-## What it installs
+The installer collects the LLM API key plus wiki/work PATs and optional Code PAT, downloads a signed FileStation release, installs OpenCode Desktop and selected tools, then deploys a rendered `%USERPROFILE%\.config\opencode` bundle.
 
-1. Before setup starts, the bootstrap verifies and stages the signed current FileStation release.
-2. Inno Setup asks for the internal LLM API key and wiki/work PATs.
-3. `si_opencode_updater.exe --provision` validates those services and writes `%USERPROFILE%\.config\opencode\opencode.jsonc` without replacing unrelated user settings.
-4. `opencode_desktop_win64.exe` installs OpenCode Desktop.
+The updater checks for a newer signed release at 10:00, 13:00, 16:00, 19:00, and 22:00. It asks before applying changes, retains existing API/PAT settings, replaces managed dependency folders atomically, and can restart OpenCode.
 
-The updater supports `--provision`, `--sync-extensions`, `--fetch-current-release`, and `--launch`.
-
-## Extension layout
-
-`payload/managed/` contains every extension dependency. It may contain only these top-level folders:
-
-```text
-mcp/
-plugin/
-skills/
-lsp/
-```
-
-Its contents are copied into `.config/opencode/` in the signed current release. The installer verifies and stages the release before starting setup.
-
-## Build
-
-Required assets in `payload/`:
-
-```text
-opencode_desktop_win64.exe
-managed/lsp/node/node.exe
-managed/{mcp,plugin,skills,lsp}/
-```
-
-Build from Windows with Rust/MSVC, Node/npm, and Inno Setup:
-
-```powershell
-.\build.ps1 -PublicKey <publisher.pub>
-```
-
-The release publisher stages `.config/opencode/` and `tools/` (including `tools/tools-manifest.json`) and signs them into `release.json` / `release.sig`. The generated config bundle is a build artifact; it is not a required file in the signed release.
-
-The bootstrap installer still ships with the Desktop installer:
-
-```text
-out/si_opencode_installer.exe
-out/opencode_desktop_win64.exe
-```
-
-Do not put a publisher private key in this repository or in a release folder.
+See [EXTERNAL-RELEASE-ASSETS.md](EXTERNAL-RELEASE-ASSETS.md) for all external files, release layout, manifest format, signing, publishing, and corporate validation.

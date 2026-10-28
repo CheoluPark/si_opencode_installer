@@ -8,7 +8,6 @@ pub mod credentials;
 pub mod nas;
 pub mod provision;
 pub mod release_download;
-pub mod validate;
 
 pub fn sha256(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
@@ -24,8 +23,6 @@ pub struct Artifact {
 pub struct NasConfig {
     #[serde(default = "default_host")]
     pub host: String,
-    #[serde(default = "default_manifest_path")]
-    pub manifest_path: String,
     #[serde(default = "default_release_path")]
     pub release_path: String,
 }
@@ -37,15 +34,11 @@ pub fn default_release_path() -> String {
 fn default_host() -> String {
     "https://file.satreci.com".into()
 }
-fn default_manifest_path() -> String {
-    "/volume1/SI\u{c870}\u{c9c1}_\u{c6b0}\u{c8fc}\u{ae30}\u{c220}\u{c13c}\u{d130}/\u{b0d0}\u{acf5}\u{c720}_\u{c6b0}\u{c8fc}\u{ae30}\u{c220}\u{ac1c}\u{bc1c}\u{c790}\u{b8cc}/Software Tools/si_opencode/extensions-manifest.json".into()
-}
 
 impl Default for NasConfig {
     fn default() -> Self {
         Self {
             host: default_host(),
-            manifest_path: default_manifest_path(),
             release_path: default_release_path(),
         }
     }
@@ -56,11 +49,6 @@ impl NasConfig {
         if self.host != "https://file.satreci.com" {
             return Err("NAS host must be https://file.satreci.com".into());
         }
-        safe_name(
-            self.manifest_path
-                .strip_prefix('/')
-                .ok_or("Manifest path must start with /")?,
-        )?;
         safe_name(
             self.release_path
                 .strip_prefix('/')
@@ -106,15 +94,15 @@ mod tests {
     #[test]
     fn release_path_defaults_and_can_be_overridden_from_local_config() {
         let default: NasConfig = serde_json::from_str(
-            r#"{"host":"https://file.satreci.com","manifest_path":"/extensions.json"}"#,
+            r#"{"host":"https://file.satreci.com"}"#,
         )
         .unwrap();
         assert_eq!(default.release_path, default_release_path());
-        let configured: NasConfig = serde_json::from_str(r#"{"host":"https://file.satreci.com","manifest_path":"/extensions.json","release_path":"/custom/current/release.json"}"#).unwrap();
+        let configured: NasConfig = serde_json::from_str(r#"{"host":"https://file.satreci.com","release_path":"/custom/current/release.json"}"#).unwrap();
         assert_eq!(configured.release_path, "/custom/current/release.json");
         assert!(configured.validate().is_ok());
         let sample: NasConfig =
-            serde_json::from_str(include_str!("../config/extensions.example.json")).unwrap();
+            serde_json::from_str(include_str!("../config/release.example.json")).unwrap();
         assert_eq!(sample.release_path, default_release_path());
     }
 }

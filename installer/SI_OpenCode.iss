@@ -33,8 +33,7 @@ Source: "{#PayloadRoot}\si_opencode_updater.exe"; DestDir: "{app}"; Flags: ignor
 Source: "{#PayloadRoot}\si_opencode_updater.exe"; Flags: dontcopy
 Source: "..\scripts\setup-runtime.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\scripts\setup-schedule.ps1"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\scripts\verify-desktop.ps1"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\config\extensions.example.json"; DestDir: "{localappdata}\SI OpenCode"; DestName: "extensions.json"; Flags: ignoreversion onlyifdoesntexist
+Source: "..\config\release.example.json"; DestDir: "{localappdata}\SI OpenCode"; DestName: "release.json"; Flags: ignoreversion onlyifdoesntexist
 
 [Icons]
 Name: "{group}\SI OpenCode"; Filename: "{app}\si_opencode_updater.exe"; Parameters: "--launch"
